@@ -1,0 +1,240 @@
+* {
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+:root {
+    --matrix-gap: 5vw;
+}
+
+body {
+    margin: 0;
+    width: 100vw;
+    height: 100vh;
+    font-size: calc(calc(1vw + 1vh) / 1.7);
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+.sdk,
+#matrix {
+    -webkit-touch-callout: none;
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+    user-drag: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -o-user-select: none;
+    user-select: none;
+    -drag: none;
+}
+
+#base {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    gap: 1em;
+}
+
+#lside_cont {
+    aspect-ratio: 1 / 1;
+    width: auto;
+    height: 100%;
+
+    display: flex;
+    flex-direction: row;
+}
+
+#rside_cont {
+    height: 100%;
+    width: auto;
+    min-width: 10vw;
+
+    display: flex;
+    flex-direction: column;
+
+    gap: 1em;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: .2em;
+    align-items: center;
+}
+
+
+
+.sdk {
+    padding: .2em .4em;
+    box-shadow: rgba(0, 0, 0, 0.1) 0px 1px 2px, rgba(0, 0, 0, 0.2) 0px 1px 2px;
+    cursor: pointer;
+    height: fit-content;
+    width: 100%;
+}
+
+.sdk.selected {
+    background-color: #171717;
+    color: #fff;
+}
+
+#examples {
+    display: flex;
+    opacity: 0;
+    position: fixed;
+    background-color: rgba(0, 0, 0, 0.6);
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition-duration: .2s;
+    transition-timing-function: ease-in-out;
+}
+
+#examples.selected {
+    z-index: 1;
+    opacity: 1;
+}
+
+#example_cont {
+    display: flex;
+    flex-direction: column;
+    width: 30%;
+    height: 70%;
+    background-color: #e8e8e8;
+    justify-content: center;
+
+    box-shadow: rgba(0, 0, 0, 0.1) 0px 1px 2px, rgba(0, 0, 0, 0.2) 0px 1px 2px;
+    border-radius: .2em;
+}
+
+#example_cont>div {
+    flex-direction: row;
+    display: flex;
+    font-size: 1.25em;
+
+    transition-duration: .2s;
+    transition-timing-function: ease-in-out;
+}
+
+
+
+.app_artwork {
+    object-fit: scale-down;
+
+    height: 100%;
+    width: auto;
+}
+
+.app_name {
+    flex: 6;
+    text-align: center;
+    align-self: center;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+#l-ledger {
+    width: var(--matrix-gap);
+    padding-top: calc(var(--matrix-gap) + .2em);
+    display: grid;
+    grid-auto-flow: row;
+    grid-auto-rows: 1fr;
+    gap: .2em;
+    padding-bottom: .2em;
+    padding-right: .2em;
+    text-align: end;
+    word-break: break-word;
+    align-items: center;
+}
+
+
+#t-ledger {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    height: var(--matrix-gap);
+    gap: .2em;
+    padding: 0 .2em;
+
+    word-break: break-word;
+    align-items: end;
+    text-align: center;
+}
+
+
+#r-mat-led {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+
+#matrix {
+    flex: 1;
+    display: grid;
+    background-color: #171717;
+    gap: .2em;
+    padding: .2em;
+    grid-auto-flow: row;
+    font-weight: bold;
+    transition: 300ms;
+}
+
+#matrix>div {
+    display: flex;
+    background-color: hsl(240, 100%, 73%);
+    justify-content: center;
+    align-items: center;
+    font-size: 1.5em;
+    cursor: pointer;
+    transition-duration: .2s;
+    transition-timing-function: ease-in;
+}
+
+#matrix>div:hover {
+    transform: scale(.98);
+}
+
+#matrix>div:active {
+    transform: scale(.80);
+}
+
+@media (max-aspect-ratio: 1 / 1) {
+
+    :root {
+        --matrix-gap: 8vh;
+    }
+
+    body {
+        font-size: calc(calc(1vw + 1vh) / 1.05);
+    }
+
+    #base {
+        flex-direction: column;
+    }
+
+    #lside_cont {
+        aspect-ratio: 1 / 1;
+        width: 100%;
+        height: auto;
+    }
+
+    #rside_cont {
+        width: 100%;
+        height: auto;
+        min-height: 10vh;
+        border-left: unset;
+        border-right: unset;
+
+        flex-direction: row;
+    }
+
+    .sdk {
+        width: auto;
+    }
+}
