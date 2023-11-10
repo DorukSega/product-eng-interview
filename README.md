@@ -12,6 +12,11 @@ nix-shell
 
 3. The API will be built and run within the Nix shell environment.
 
+If compilation fails (sometimes go can't link with sqlite in the first try), run following again
+```sh
+go run .
+``` 
+
 The web/frontend is located in the `./web` directory and does not have any build steps.
 
 4. Open the `index.html` file in a web browser.
