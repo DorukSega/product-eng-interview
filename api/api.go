@@ -86,8 +86,19 @@ var covered_cases []int
 
 var current_mod_time int64 = getModTime()
 
+var databaseFlag string = "../data.db"
+
 func main() {
-	db, err := sqlx.Open("sqlite3", "../data.db")
+	if len(os.Args) > 1 {
+		filePath := os.Args[1]
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			log.Fatalf("Database File '%s' not found.\nUsage:\n\twapi <data.db>\n", filePath)
+		} else {
+			databaseFlag = filePath
+		}
+	}
+
+	db, err := sqlx.Open("sqlite3", databaseFlag)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -425,7 +436,7 @@ func QueryMatrix(db *sqlx.DB, sdk_ids []int, xor_val int) ([]Matrix, error) {
 }
 
 func getModTime() int64 {
-	fileInfo, err := os.Stat("../data.db")
+	fileInfo, err := os.Stat(databaseFlag)
 	if err != nil {
 		fmt.Println("Unable to get Modification Time")
 		log.Fatal(err)
