@@ -10,6 +10,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"time"
 )
 
 type Sdk struct {
@@ -47,6 +49,11 @@ type ExampleRequest struct {
 	To_sdk    int   `json:"to_sdk"`
 }
 
+type ResponseData struct {
+	Body     any   `json:"body"`
+	Checksum int32 `json:"checksum"`
+}
+
 const (
 	HOST = "127.0.0.1" // Local Host
 	PORT = "8080"
@@ -77,6 +84,8 @@ var address = fmt.Sprintf("%s:%s", HOST, PORT)
 
 var covered_cases []int
 
+var current_mod_time int64 = getModTime()
+
 func main() {
 	db, err := sqlx.Open("sqlite3", "../data.db")
 	if err != nil {
@@ -86,7 +95,33 @@ func main() {
 
 	fmt.Printf("Serving at http://%s\n", address)
 
-	// Todo: check if database changed and load covered cases
+	// check database changes every 10 seconds
+	ticker := time.NewTicker(10 * time.Second)
+	go periodicCheck(ticker)
+
+	http.HandleFunc("/get-checksum", func(w http.ResponseWriter, r *http.Request) {
+		// CORS for testing, change to allowed domains later
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		checkModTime()
+
+		type ResponseChecksum struct {
+			Checksum int32 `json:"checksum"`
+		}
+
+		response := ResponseChecksum{
+			Checksum: int32(current_mod_time),
+		}
+
+		jsonData, err := json.Marshal(response)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(jsonData)
+
+	})
 
 	http.HandleFunc("/get-sdks", func(w http.ResponseWriter, r *http.Request) {
 		// CORS for testing, change to allowed domains later
@@ -109,7 +144,12 @@ func main() {
 			sdks = append(sdks, d)
 		}
 
-		jsonData, err := json.Marshal(sdks)
+		response := ResponseData{
+			Body:     sdks,
+			Checksum: int32(current_mod_time),
+		}
+
+		jsonData, err := json.Marshal(response)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -146,7 +186,11 @@ func main() {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			jsonData, err := json.Marshal(d)
+			response := ResponseData{
+				Body:     d,
+				Checksum: int32(current_mod_time),
+			}
+			jsonData, err := json.Marshal(response)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -162,7 +206,11 @@ func main() {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			jsonData, err := json.Marshal(matricies)
+			response := ResponseData{
+				Body:     matricies,
+				Checksum: int32(current_mod_time),
+			}
+			jsonData, err := json.Marshal(response)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -173,12 +221,12 @@ func main() {
 		}
 
 		// XOR the sdk_ids
-		var xor_val int
+		var xor_val int = 0
+		var in_covered_case = false
 		for _, v := range sdk_ids {
 			xor_val ^= v
 		}
 		// check if in covered_cases
-		var in_covered_case = false
 		for _, v := range covered_cases {
 			if v == xor_val {
 				in_covered_case = true
@@ -189,9 +237,9 @@ func main() {
 		// if so query our new table, if not QUERY_MATRIX and both return and insert to table
 		if in_covered_case {
 			new_in := append(sdk_ids, -xor_val)
+
 			query_in, args, _ := sqlx.In("select * from cache_matrix where from_sdk in (?) and to_sdk in(?)", new_in, new_in)
 			query_in = db.Rebind(query_in)
-
 			rows, err := db.Query(query_in, args...)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -208,8 +256,11 @@ func main() {
 				}
 				matricies = append(matricies, d)
 			}
-
-			jsonData, err := json.Marshal(matricies)
+			response := ResponseData{
+				Body:     matricies,
+				Checksum: int32(current_mod_time),
+			}
+			jsonData, err := json.Marshal(response)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -223,7 +274,11 @@ func main() {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			jsonData, err := json.Marshal(matricies)
+			response := ResponseData{
+				Body:     matricies,
+				Checksum: int32(current_mod_time),
+			}
+			jsonData, err := json.Marshal(response)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -232,14 +287,9 @@ func main() {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write(jsonData)
 
-			// write to database table and return
-			for _, val := range matricies {
-				_, err := db.Exec(insert_cache, val.From_sdk, val.To_sdk, val.Count)
-				if err != nil {
-					log.Fatal(err)
-				}
+			if xor_val != 0 {
+				go writeToDB(matricies, db, xor_val)
 			}
-			covered_cases = append(covered_cases, xor_val)
 		}
 	})
 
@@ -270,7 +320,7 @@ func main() {
 		var ex_err error
 
 		if go_req.From_sdk == go_req.To_sdk {
-			if go_req.From_sdk >= 0 {
+			if go_req.From_sdk > 0 {
 				// from_sdk = to_sdk and both positive
 				rows, ex_err = db.Query(from_sdk_EQ_to_sdk, go_req.From_sdk)
 			} else {
@@ -289,7 +339,7 @@ func main() {
 				}
 			}
 		} else { // not equals
-			if go_req.From_sdk >= 0 && go_req.To_sdk < 0 {
+			if go_req.From_sdk > 0 && go_req.To_sdk <= 0 {
 				// from_sdk positive and to_sdk negative
 				query, args, err := sqlx.In(from_sdk_NEG, go_req.From_sdk, go_req.Sdk_tuple)
 				if err != nil {
@@ -299,7 +349,7 @@ func main() {
 
 				query = db.Rebind(query)
 				rows, ex_err = db.Query(query, args...)
-			} else if go_req.From_sdk < 0 && go_req.To_sdk >= 0 {
+			} else if go_req.From_sdk <= 0 && go_req.To_sdk >= 0 {
 				// from_sdk negative and to_sdk positive
 				query, args, err := sqlx.In(NEG_to_sdk, go_req.Sdk_tuple, go_req.To_sdk)
 				if err != nil {
@@ -330,8 +380,11 @@ func main() {
 			}
 			apps = append(apps, a)
 		}
-
-		jsonData, err := json.Marshal(apps)
+		response := ResponseData{
+			Body:     apps,
+			Checksum: int32(current_mod_time),
+		}
+		jsonData, err := json.Marshal(response)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -341,7 +394,7 @@ func main() {
 		w.Write(jsonData)
 	})
 
-	http.ListenAndServe(address, nil)
+	http.ListenAndServe(":"+PORT, nil)
 
 }
 
@@ -369,4 +422,41 @@ func QueryMatrix(db *sqlx.DB, sdk_ids []int, xor_val int) ([]Matrix, error) {
 		matricies = append(matricies, d)
 	}
 	return matricies, nil
+}
+
+func getModTime() int64 {
+	fileInfo, err := os.Stat("../data.db")
+	if err != nil {
+		fmt.Println("Unable to get Modification Time")
+		log.Fatal(err)
+	}
+	return fileInfo.ModTime().UnixMilli()
+}
+
+func checkModTime() {
+	latest_mod_time := getModTime()
+	if latest_mod_time != current_mod_time {
+		covered_cases = nil
+		fmt.Println("Modification detected. Resetting covered cases.")
+	}
+	current_mod_time = latest_mod_time
+}
+
+func periodicCheck(ticker *time.Ticker) {
+	for range ticker.C {
+		checkModTime()
+	}
+}
+
+func writeToDB(matricies []Matrix, db *sqlx.DB, xor_val int) {
+	// write to database table and return
+	for _, val := range matricies {
+		_, err := db.Exec(insert_cache, val.From_sdk, val.To_sdk, val.Count)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	covered_cases = append(covered_cases, xor_val)
+	// to avoid clearing covered cases, reset checksum
+	current_mod_time = getModTime()
 }

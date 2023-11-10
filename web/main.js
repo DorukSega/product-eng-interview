@@ -1,9 +1,9 @@
 ///API SERVER///
-const API_SERVER = "http://127.0.0.1:8080"
+const API_SERVER = window.location.protocol !== "file:" ? `${window.location.protocol}//${window.location.hostname}:8080` : "http://127.0.0.1:8080"
 ////////////////
 
 /** Indiviual Matrix Cell
- *  @typedef {{from_sdk:number, to_sdk:number, count:number}} MatrixItem 
+ *  @typedef {{from_sdk:number, to_sdk:number, count:number, examples: AppInfo[]}} MatrixItem 
  */
 
 /**
@@ -41,8 +41,15 @@ let selected_sdks = [];
  *  @type {Sdk[]} */
 let all_sdks = [];
 
+/** @type {MatrixItem[]} */
+let matrix_reference = [];
+
+let global_checksum = 1;
+
 window.onload = async function () {
-    all_sdks = await (await fetch(API_SERVER + '/get-sdks').catch(err => (alert("Please make sure that API server is running\n" + err)))).json();
+    const all_sdks_json = await (await fetch(API_SERVER + '/get-sdks').catch(err => (alert("Please make sure that API server is running\n" + err)))).json();
+    all_sdks = all_sdks_json.body;
+    global_checksum = all_sdks_json.checksum;
 
     const sdk_view = document.getElementById("rside_cont");
     for (const sdk of all_sdks) {
@@ -56,6 +63,8 @@ window.onload = async function () {
         if (msev.target.id === "examples")
             this.classList.remove("selected");
     })
+
+    setInterval(getChecksum, 10 * 1000);
 }
 
 function create_sdk_element(name, id) {
@@ -94,13 +103,14 @@ function create_ledger_elements(parent) {
 
 async function draw_matrix() {
     /** @type {MatrixItem[]} */
-    let data = await (
+    const data_json = await (
         await fetch(API_SERVER + '/post-matrix', {
             method: 'POST',
             body: JSON.stringify(selected_sdks),
         }).catch(err => (alert("Please make sure that API server is running\n" + err)))
     ).json();
-
+    let data = data_json.body;
+    global_checksum = data_json.checksum;
     const ledger_left = document.getElementById("l-ledger");
     const ledger_top = document.getElementById("t-ledger");
     create_ledger_elements(ledger_left)
@@ -136,6 +146,11 @@ async function draw_matrix() {
         grid_col += " 1fr";
     matrix_el.style.gridTemplateColumns = grid_col;
 
+    matrix_reference.length = 0
+    // Todo: don't update data on main diagonal, ie 33 -> 33 outside of negative -> negative
+    // since examples won't change on those
+    matrix_reference = matrix_reference.concat(...data)
+
 }
 
 /** @param {MatrixItem} cell  */
@@ -150,14 +165,10 @@ function create_matrix_cell(cell) {
 
 
     div.addEventListener("click", async function () {
-        /** @this HTMLDivElement */
-        // this.classList.toggle("selected")
-
         const exam_element = document.getElementById("examples");
         await show_examples(cell);
         exam_element.classList.add("selected");
     })
-
 
     return div
 }
@@ -184,16 +195,36 @@ function normalize_array(row) {
 
 /** @param {MatrixItem} cell  */
 async function show_examples(cell) {
-    /** @type {AppInfo[]} */
-    let data = await (
-        await fetch(API_SERVER + '/post-examples', {
-            method: 'POST',
-            body: JSON.stringify({ from_sdk: cell.from_sdk, to_sdk: cell.to_sdk, sdk_tuple: selected_sdks }),
-        }).catch(err => (alert("Please make sure that API server is running\n" + err)))
-    ).json();
-
     const example_cont = document.getElementById("example_cont");
     example_cont.innerHTML = ""
+
+    /** @type {AppInfo[]} */
+    let data = []
+    const matrix_cell_ref = matrix_reference.find(x => x.from_sdk === cell.from_sdk && x.to_sdk === cell.to_sdk);
+    if (matrix_cell_ref && matrix_cell_ref.examples !== undefined) {
+        data = matrix_cell_ref.examples;
+    } else {
+        const data_json = await (
+            await fetch(API_SERVER + '/post-examples', {
+                method: 'POST',
+                body: JSON.stringify({ from_sdk: cell.from_sdk, to_sdk: cell.to_sdk, sdk_tuple: selected_sdks }),
+            }).catch(err => (alert("Please make sure that API server is running\n" + err)))
+        ).json();
+        data = data_json.body;
+        global_checksum = data_json.checksum;
+
+        if (!data) {
+            // when there is 0 examples or 0 count
+            if (cell.count !== 0) {
+                console.log(`${cell.from_sdk} > ${cell.to_sdk}'s examples are null, while count is not`);
+            }
+            return;
+        }
+
+        if (matrix_cell_ref)
+            matrix_cell_ref.examples = data;
+    }
+
     if (data.length === 0)
         return;
     for (const app of data) {
@@ -207,3 +238,17 @@ function create_example_element(app) {
     return `<div> <img class="app_artwork" src="${img_url}" alt="${app.name} Artwork" width="100" height="100"> <div class="app_name">${app.name}</div> </div>`;
 }
 
+function matrix_reference_get(from_sdk, to_sdk) {
+    return matrix_reference.find(x => x.from_sdk === from_sdk && x.to_sdk === to_sdk)
+}
+
+async function getChecksum() {
+    const checksum_json = await (await fetch(API_SERVER + '/get-checksum').catch(err => (alert("Please make sure that API server is running\n" + err)))).json();
+    const checksum = checksum_json.checksum;
+
+    if (checksum === global_checksum)
+        return;
+    console.log("Checksum changed, reloading data from server")
+    await draw_matrix()
+    global_checksum = checksum
+}
