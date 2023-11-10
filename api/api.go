@@ -100,7 +100,7 @@ func main() {
 
 	db, err := sqlx.Open("sqlite3", databaseFlag)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Database File '%s' not found.\nUsage:\n\twapi <data.db>\n", databaseFlag)
 	}
 	defer db.Close()
 
