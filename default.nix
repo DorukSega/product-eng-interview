@@ -4,8 +4,9 @@ let
 in pkgs.mkShell rec {
   name = "interview";
   buildInputs = with pkgs; [
-    go 
+    gcc
     sqlite
+    go 
   ];
   shellHook = ''
 	cd ./api
